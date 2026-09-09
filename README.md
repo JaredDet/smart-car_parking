@@ -25,6 +25,16 @@ Arduino procesa las mediciones y controla la barrera, mientras que Processing re
 * Envía los estados hacia Processing mediante comunicación serial.
 * Muestra los estados de los estacionamientos y la barrera en una interfaz gráfica.
 
+Si un sensor de plaza no devuelve eco, su estado se informa como `DESCONOCIDO`
+y esa plaza no habilita la apertura. La barrera solo comienza a cerrar con una
+lectura válida por encima de 20 cm; si el sensor de acceso falla durante el
+cierre, vuelve a abrirse. La ausencia de eco no se considera una zona despejada.
+
+Las mediciones se alternan en el orden acceso, plaza 1, acceso, plaza 2, con
+60 ms de espera sin bloqueo entre lecturas. Cada lectura puede bloquear hasta
+30 ms. Se eliminó el promedio de diez lecturas consecutivas; conviene comprobar
+la estabilidad de las lecturas y los umbrales con el montaje físico.
+
 ## Comunicación
 
 Arduino y Processing se comunican mediante el puerto serial a **9600 baudios**.

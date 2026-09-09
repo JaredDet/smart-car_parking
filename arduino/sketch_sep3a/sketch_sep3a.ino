@@ -17,7 +17,7 @@ const float DISTANCIA_MAXIMA_CM = 20.0;
 const float DISTANCIA_OCUPADO_CM = 10.0;
 
 const float FACTOR_CONVERSION_CM = 58.0;
-const int CANTIDAD_MEDICIONES = 10;
+const unsigned long INTERVALO_MEDICION_MS = 60;
 
 const unsigned long TIMEOUT_ECHO_US = 30000;
 const unsigned long INTERVALO_ENVIO_MS = 500;
@@ -25,6 +25,11 @@ const unsigned long TIEMPO_MOVIMIENTO_MS = 1000;
 
 unsigned long ultimoEnvio = 0;
 unsigned long inicioMovimiento = 0;
+unsigned long ultimaMedicion = 0;
+int turnoMedicion = 0;
+float distanciaPeaje = -1;
+float distanciaEstacionamiento1 = -1;
+float distanciaEstacionamiento2 = -1;
 
 const int ANGULO_CERRADO = 0;
 const int ANGULO_ABIERTO = 90;
@@ -63,32 +68,28 @@ float medirDistanciaUltrasonido(int triggerPin, int echoPin) {
   return tiempoEcho / FACTOR_CONVERSION_CM;
 }
 
-float medirDistanciaPromedio(int triggerPin, int echoPin) {
+void actualizarMediciones() {
 
-  float suma = 0;
-  int medicionesValidas = 0;
-
-  for (int i = 0; i < CANTIDAD_MEDICIONES; i++) {
-
-    float distancia =
-      medirDistanciaUltrasonido(
-        triggerPin,
-        echoPin
-      );
-
-    if (distancia >= 0) {
-      suma += distancia;
-      medicionesValidas++;
-    }
-
-    delay(10);
+  if (millis() - ultimaMedicion < INTERVALO_MEDICION_MS) {
+    return;
   }
 
-  if (medicionesValidas == 0) {
-    return -1;
+  // Alterna acceso, plaza 1, acceso, plaza 2 para priorizar la barrera.
+  // Solo una lectura bloqueante por turno; un fallo invalida el dato anterior.
+  if (turnoMedicion == 0 || turnoMedicion == 2) {
+    distanciaPeaje = medirDistanciaUltrasonido(TRIGGER_PEAJE, ECHO_PEAJE);
+  } else if (turnoMedicion == 1) {
+    distanciaEstacionamiento1 = medirDistanciaUltrasonido(
+      TRIGGER_ESTACIONAMIENTO_1, ECHO_ESTACIONAMIENTO_1
+    );
+  } else {
+    distanciaEstacionamiento2 = medirDistanciaUltrasonido(
+      TRIGGER_ESTACIONAMIENTO_2, ECHO_ESTACIONAMIENTO_2
+    );
   }
 
-  return suma / medicionesValidas;
+  ultimaMedicion = millis();
+  turnoMedicion = (turnoMedicion + 1) % 4;
 }
 
 bool vehiculoDetectado(float distancia) {
@@ -113,8 +114,8 @@ bool hayEstacionamientoLibre(
 ) {
 
   return (
-    !estacionamientoOcupado(distancia1) ||
-    !estacionamientoOcupado(distancia2)
+    distancia1 >= DISTANCIA_OCUPADO_CM ||
+    distancia2 >= DISTANCIA_OCUPADO_CM
   );
 }
 
@@ -125,7 +126,9 @@ void enviarEstado(
 
   Serial.print("EST1:");
 
-  if (estacionamientoOcupado(distanciaEstacionamiento1)) {
+  if (distanciaEstacionamiento1 < 0) {
+    Serial.print("DESCONOCIDO");
+  } else if (estacionamientoOcupado(distanciaEstacionamiento1)) {
     Serial.print("OCUPADO");
   } else {
     Serial.print("LIBRE");
@@ -133,7 +136,9 @@ void enviarEstado(
 
   Serial.print(";EST2:");
 
-  if (estacionamientoOcupado(distanciaEstacionamiento2)) {
+  if (distanciaEstacionamiento2 < 0) {
+    Serial.print("DESCONOCIDO");
+  } else if (estacionamientoOcupado(distanciaEstacionamiento2)) {
     Serial.print("OCUPADO");
   } else {
     Serial.print("LIBRE");
@@ -183,23 +188,7 @@ void setup() {
 
 void loop() {
 
-  float distanciaPeaje =
-    medirDistanciaPromedio(
-      TRIGGER_PEAJE,
-      ECHO_PEAJE
-    );
-
-  float distanciaEstacionamiento1 =
-    medirDistanciaPromedio(
-      TRIGGER_ESTACIONAMIENTO_1,
-      ECHO_ESTACIONAMIENTO_1
-    );
-
-  float distanciaEstacionamiento2 =
-    medirDistanciaPromedio(
-      TRIGGER_ESTACIONAMIENTO_2,
-      ECHO_ESTACIONAMIENTO_2
-    );
+  actualizarMediciones();
 
   switch (estadoActual) {
 
@@ -231,7 +220,8 @@ void loop() {
 
     case ABIERTO:
 
-      if (!vehiculoDetectado(distanciaPeaje)) {
+      // Una lectura fallida o demasiado cercana no confirma una zona despejada.
+      if (distanciaPeaje > DISTANCIA_MAXIMA_CM) {
 
         servo.write(ANGULO_CERRADO);
 
@@ -243,7 +233,8 @@ void loop() {
 
     case CERRANDO:
 
-      if (vehiculoDetectado(distanciaPeaje)) {
+      // Reabre también si falla el sensor o si la lectura es demasiado cercana.
+      if (distanciaPeaje <= DISTANCIA_MAXIMA_CM) {
 
         servo.write(ANGULO_ABIERTO);
 
@@ -268,5 +259,4 @@ void loop() {
     ultimoEnvio = millis();
   }
 
-  delay(50);
 }

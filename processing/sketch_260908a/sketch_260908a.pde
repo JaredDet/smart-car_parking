@@ -227,8 +227,10 @@ void serialEvent(Serial puerto) {
   String peaje = campos[2].substring(6);
 
   if (
-    !(estacionamiento1.equals("LIBRE") || estacionamiento1.equals("OCUPADO")) ||
-    !(estacionamiento2.equals("LIBRE") || estacionamiento2.equals("OCUPADO")) ||
+    !(estacionamiento1.equals("LIBRE") || estacionamiento1.equals("OCUPADO") ||
+      estacionamiento1.equals("DESCONOCIDO")) ||
+    !(estacionamiento2.equals("LIBRE") || estacionamiento2.equals("OCUPADO") ||
+      estacionamiento2.equals("DESCONOCIDO")) ||
     !(peaje.equals("CERRADO") || peaje.equals("ABRIENDO") ||
       peaje.equals("ABIERTO") || peaje.equals("CERRANDO"))
   ) {
