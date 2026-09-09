@@ -4,7 +4,7 @@ Serial puertoSerial;
 
 String estadoEstacionamiento1 = "DESCONOCIDO";
 String estadoEstacionamiento2 = "DESCONOCIDO";
-String estadoPeaje = "CERRADO";
+String estadoPeaje = "DESCONOCIDO";
 
 void setup() {
 
@@ -73,11 +73,14 @@ void dibujarEspacio(
   text(nombre, x + 150, y + 45);
 
   boolean ocupado = estado.equals("OCUPADO");
+  boolean libre = estado.equals("LIBRE");
 
   if (ocupado) {
     fill(220, 60, 60);
-  } else {
+  } else if (libre) {
     fill(60, 200, 100);
+  } else {
+    fill(140);
   }
 
   noStroke();
@@ -88,8 +91,10 @@ void dibujarEspacio(
 
   if (ocupado) {
     text("X", x + 150, y + 116);
-  } else {
+  } else if (libre) {
     text("✓", x + 150, y + 116);
+  } else {
+    text("?", x + 150, y + 116);
   }
 
   fill(220);
@@ -97,8 +102,10 @@ void dibujarEspacio(
 
   if (ocupado) {
     text("OCUPADO", x + 150, y + 160);
-  } else {
+  } else if (libre) {
     text("LIBRE", x + 150, y + 160);
+  } else {
+    text("DESCONOCIDO", x + 150, y + 160);
   }
 }
 
@@ -118,7 +125,7 @@ void dibujarCabina(
   textSize(24);
   text("CABINA", x + 150, y + 40);
 
-  if (estado.equals("ABIERTA")) {
+  if (estado.equals("ABIERTO")) {
 
     fill(60, 200, 100);
 
@@ -129,9 +136,10 @@ void dibujarCabina(
 
     fill(240, 160, 50);
 
-  } else {
-
+  } else if (estado.equals("CERRADO")) {
     fill(220, 60, 60);
+  } else {
+    fill(140);
   }
 
   noStroke();
@@ -150,7 +158,15 @@ void dibujarMensaje() {
 
   String mensaje;
 
-  if (!espacioLibre) {
+  if (
+    estadoEstacionamiento1.equals("DESCONOCIDO") ||
+    estadoEstacionamiento2.equals("DESCONOCIDO") ||
+    estadoPeaje.equals("DESCONOCIDO")
+  ) {
+
+    mensaje = "ESPERANDO DATOS";
+
+  } else if (!espacioLibre) {
 
     mensaje = "ESTACIONAMIENTO LLENO";
 
@@ -165,13 +181,13 @@ void dibujarMensaje() {
       mensaje = "ESPERE MIENTRAS LA CABINA SE CIERRA";
     }
 
-  } else if (estadoPeaje.equals("ABIERTA")) {
+  } else if (estadoPeaje.equals("ABIERTO")) {
 
     mensaje = "PASE";
 
   } else {
 
-    mensaje = "ESPERE MIENTRAS LA CABINA SE ABRE";
+    mensaje = "ESPERE ANTE LA BARRERA";
   }
 
   stroke(80);
@@ -195,19 +211,31 @@ void serialEvent(Serial puerto) {
 
   mensaje = trim(mensaje);
 
-  if (mensaje.startsWith("EST1:")) {
+  String[] campos = split(mensaje, ';');
 
-    estadoEstacionamiento1 =
-      mensaje.substring(5);
-
-  } else if (mensaje.startsWith("EST2:")) {
-
-    estadoEstacionamiento2 =
-      mensaje.substring(5);
-
-  } else if (mensaje.startsWith("PEAJE:")) {
-
-    estadoPeaje =
-      mensaje.substring(6);
+  if (
+    campos.length != 3 ||
+    !campos[0].startsWith("EST1:") ||
+    !campos[1].startsWith("EST2:") ||
+    !campos[2].startsWith("PEAJE:")
+  ) {
+    return;
   }
+
+  String estacionamiento1 = campos[0].substring(5);
+  String estacionamiento2 = campos[1].substring(5);
+  String peaje = campos[2].substring(6);
+
+  if (
+    !(estacionamiento1.equals("LIBRE") || estacionamiento1.equals("OCUPADO")) ||
+    !(estacionamiento2.equals("LIBRE") || estacionamiento2.equals("OCUPADO")) ||
+    !(peaje.equals("CERRADO") || peaje.equals("ABRIENDO") ||
+      peaje.equals("ABIERTO") || peaje.equals("CERRANDO"))
+  ) {
+    return;
+  }
+
+  estadoEstacionamiento1 = estacionamiento1;
+  estadoEstacionamiento2 = estacionamiento2;
+  estadoPeaje = peaje;
 }
