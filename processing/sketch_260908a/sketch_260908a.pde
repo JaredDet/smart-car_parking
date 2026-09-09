@@ -6,196 +6,181 @@ String estadoEstacionamiento1 = "DESCONOCIDO";
 String estadoEstacionamiento2 = "DESCONOCIDO";
 String estadoPeaje = "DESCONOCIDO";
 
+final color FONDO = #121212;
+final color PANEL = #202020;
+final color BORDE = #3A3A3A;
+final color TEXTO = #F5F5F5;
+final color SECUNDARIO = #B0B0B0;
+final color VERDE = #66AD85;
+final color ROJO = #D98080;
+final color AMBAR = #D0AD66;
+final color GRIS = #A8A8A8;
+
 void setup() {
-
-  size(900, 650);
-
+  size(900, 700);
   println(Serial.list());
-
-  puertoSerial = new Serial(this, Serial.list()[0], 9600);
-  puertoSerial.bufferUntil('\n');
-
+  if (Serial.list().length > 0) {
+    puertoSerial = new Serial(this, Serial.list()[0], 9600);
+    puertoSerial.bufferUntil('\n');
+  }
   textFont(createFont("Arial", 24));
 }
 
 void draw() {
+  background(FONDO);
+  textAlign(LEFT);
+  fill(TEXTO);
+  textSize(32);
+  text("Estacionamiento", 40, 55);
+  fill(SECUNDARIO);
+  textSize(16);
+  text("Disponibilidad y control de acceso", 40, 83);
 
-  background(35);
+  textSize(18);
+  text("PLAZAS DE ESTACIONAMIENTO", 40, 132);
+  dibujarEspacio(40, 150, "PLAZA 1", estadoEstacionamiento1);
+  dibujarEspacio(462, 150, "PLAZA 2", estadoEstacionamiento2);
 
-  // Título
-  fill(255);
-  textAlign(CENTER);
-  textSize(36);
-  text("ESTACIONAMIENTO", width / 2, 60);
-
-  stroke(90);
-  strokeWeight(2);
-  line(80, 90, width - 80, 90);
-
-  dibujarEspacio(
-    100,
-    130,
-    "ESPACIO 1",
-    estadoEstacionamiento1
-  );
-
-  dibujarEspacio(
-    500,
-    130,
-    "ESPACIO 2",
-    estadoEstacionamiento2
-  );
-
-  dibujarCabina(
-    300,
-    390,
-    estadoPeaje
-  );
-
-  dibujarMensaje();
+  fill(SECUNDARIO);
+  textAlign(LEFT);
+  textSize(18);
+  text("BARRERA DE ACCESO", 40, 415);
+  dibujarBarrera(40, 433, estadoPeaje);
 }
 
-void dibujarEspacio(
-  int x,
-  int y,
-  String nombre,
-  String estado
-) {
+void dibujarPanel(int x, int y, int ancho, int alto) {
+  stroke(BORDE);
+  strokeWeight(1);
+  fill(PANEL);
+  rect(x, y, ancho, alto, 16);
+}
 
-  stroke(80);
-  strokeWeight(2);
-  fill(45);
-  rect(x, y, 300, 200, 15);
-
-  fill(255);
-  textAlign(CENTER);
-  textSize(24);
-  text(nombre, x + 150, y + 45);
-
-  boolean ocupado = estado.equals("OCUPADO");
-  boolean libre = estado.equals("LIBRE");
-
-  if (ocupado) {
-    fill(220, 60, 60);
-  } else if (libre) {
-    fill(60, 200, 100);
-  } else {
-    fill(140);
+color colorEstado(String estado) {
+  if (estado.equals("LIBRE") || estado.equals("ABIERTO")) {
+    return VERDE;
   }
+  if (estado.equals("OCUPADO") || estado.equals("CERRADO")) {
+    return ROJO;
+  }
+  if (estado.equals("ABRIENDO") || estado.equals("CERRANDO")) {
+    return AMBAR;
+  }
+  return GRIS;
+}
+
+void dibujarEspacio(int x, int y, String nombre, String estado) {
+  dibujarPanel(x, y, 398, 220);
+  color acento = colorEstado(estado);
 
   noStroke();
-  ellipse(x + 150, y + 105, 55, 55);
+  fill(acento);
+  rect(x + 24, y + 24, 5, 24, 2);
+  fill(TEXTO);
+  textAlign(LEFT);
+  textSize(18);
+  text(nombre, x + 42, y + 43);
 
-  fill(255);
-  textSize(30);
-
-  if (ocupado) {
-    text("X", x + 150, y + 116);
-  } else if (libre) {
-    text("✓", x + 150, y + 116);
+  // El símbolo y el texto permiten reconocer el estado sin depender del color.
+  noFill();
+  stroke(acento);
+  strokeWeight(3);
+  ellipse(x + 53, y + 111, 48, 48);
+  if (estado.equals("LIBRE")) {
+    line(x + 42, y + 111, x + 50, y + 119);
+    line(x + 50, y + 119, x + 65, y + 102);
+  } else if (estado.equals("OCUPADO")) {
+    line(x + 45, y + 103, x + 61, y + 119);
+    line(x + 61, y + 103, x + 45, y + 119);
   } else {
-    text("?", x + 150, y + 116);
+    fill(acento);
+    textAlign(CENTER, CENTER);
+    textSize(28);
+    text("?", x + 53, y + 109);
   }
 
-  fill(220);
-  textSize(20);
-
-  if (ocupado) {
-    text("OCUPADO", x + 150, y + 160);
-  } else if (libre) {
-    text("LIBRE", x + 150, y + 160);
-  } else {
-    text("DESCONOCIDO", x + 150, y + 160);
+  textAlign(LEFT, BASELINE);
+  fill(acento);
+  textSize(26);
+  text(estado, x + 92, y + 121);
+  fill(SECUNDARIO);
+  textSize(16);
+  String detalle = "Sin una lectura válida del sensor";
+  if (estado.equals("LIBRE")) {
+    detalle = "Disponible para estacionar";
+  } else if (estado.equals("OCUPADO")) {
+    detalle = "Plaza ocupada por un vehículo";
   }
+  text(detalle, x + 24, y + 187);
 }
 
-void dibujarCabina(
-  int x,
-  int y,
-  String estado
-) {
-
-  stroke(80);
-  strokeWeight(2);
-  fill(45);
-  rect(x, y, 300, 150, 15);
-
-  fill(255);
-  textAlign(CENTER);
-  textSize(24);
-  text("CABINA", x + 150, y + 40);
-
+void dibujarBarrera(int x, int y, String estado) {
+  dibujarPanel(x, y, 820, 225);
+  noStroke();
+  fill(colorEstado(estado));
+  ellipse(x + 30, y + 32, 12, 12);
+  fill(TEXTO);
+  textAlign(LEFT);
+  textSize(17);
+  String etiqueta = estado;
   if (estado.equals("ABIERTO")) {
-
-    fill(60, 200, 100);
-
-  } else if (
-    estado.equals("ABRIENDO") ||
-    estado.equals("CERRANDO")
-  ) {
-
-    fill(240, 160, 50);
-
+    etiqueta = "ABIERTA";
   } else if (estado.equals("CERRADO")) {
-    fill(220, 60, 60);
-  } else {
-    fill(140);
+    etiqueta = "CERRADA";
   }
+  text("Estado de la barrera: " + etiqueta, x + 48, y + 38);
 
-  noStroke();
-  ellipse(x + 80, y + 95, 35, 35);
-
-  fill(230);
-  textSize(21);
-  text(estado, x + 190, y + 102);
+  stroke(BORDE);
+  strokeWeight(1);
+  line(x + 24, y + 59, x + 796, y + 59);
+  dibujarMensaje(x, y);
 }
 
-void dibujarMensaje() {
-
+void dibujarMensaje(int x, int y) {
   boolean espacioLibre =
     estadoEstacionamiento1.equals("LIBRE") ||
     estadoEstacionamiento2.equals("LIBRE");
-
-  String mensaje;
-
-  if (
+  boolean datosDesconocidos =
     estadoEstacionamiento1.equals("DESCONOCIDO") ||
     estadoEstacionamiento2.equals("DESCONOCIDO") ||
-    estadoPeaje.equals("DESCONOCIDO")
-  ) {
+    estadoPeaje.equals("DESCONOCIDO");
 
+  String mensaje;
+  String detalle;
+  color acento;
+
+  if (datosDesconocidos) {
     mensaje = "ESPERANDO DATOS";
-
+    detalle = "No se dispone de todos los estados del sistema.";
+    acento = GRIS;
   } else if (!espacioLibre) {
-
     mensaje = "ESTACIONAMIENTO LLENO";
-
+    detalle = "Espere a que quede una plaza disponible.";
+    acento = ROJO;
   } else if (estadoPeaje.equals("ABRIENDO")) {
-
-    mensaje = "ESPERE MIENTRAS LA CABINA SE ABRE";
-
+    mensaje = "ESPERE";
+    detalle = "La barrera se está abriendo.";
+    acento = AMBAR;
   } else if (estadoPeaje.equals("CERRANDO")) {
-
-    mensaje = "ESPERE MIENTRAS LA CABINA SE CIERRA";
-
+    mensaje = "ESPERE";
+    detalle = "La barrera se está cerrando.";
+    acento = AMBAR;
   } else if (estadoPeaje.equals("ABIERTO")) {
-
     mensaje = "PASE";
-
+    detalle = "Barrera abierta. Avance hacia una plaza libre.";
+    acento = VERDE;
   } else {
-
-    mensaje = "ESPERE ANTE LA BARRERA";
+    mensaje = "ESPERE";
+    detalle = "Deténgase ante la barrera hasta que se abra.";
+    acento = ROJO;
   }
 
-  stroke(80);
-  strokeWeight(2);
-  fill(45);
-  rect(150, 570, 600, 55, 12);
-
-  fill(255);
   textAlign(CENTER);
-  textSize(22);
-  text(mensaje, width / 2, 606);
+  fill(acento);
+  textSize(32);
+  text(mensaje, x + 410, y + 121);
+  fill(SECUNDARIO);
+  textSize(18);
+  text(detalle, x + 410, y + 162);
 }
 
 void serialEvent(Serial puerto) {
