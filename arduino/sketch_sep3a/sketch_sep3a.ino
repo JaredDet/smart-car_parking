@@ -194,18 +194,18 @@ void loop() {
 
     case CERRADO:
 
-      if (vehiculoDetectado(distanciaPeaje)) {
+      if (
+        vehiculoDetectado(distanciaPeaje) &&
+        hayEstacionamientoLibre(
+          distanciaEstacionamiento1,
+          distanciaEstacionamiento2
+        )
+      ) {
 
-        if (hayEstacionamientoLibre(
-              distanciaEstacionamiento1,
-              distanciaEstacionamiento2
-            )) {
+        servo.write(ANGULO_ABIERTO);
 
-          servo.write(ANGULO_ABIERTO);
-
-          inicioMovimiento = millis();
-          estadoActual = ABRIENDO;
-        }
+        inicioMovimiento = millis();
+        estadoActual = ABRIENDO;
       }
 
       break;

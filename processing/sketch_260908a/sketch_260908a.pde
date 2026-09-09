@@ -170,16 +170,13 @@ void dibujarMensaje() {
 
     mensaje = "ESTACIONAMIENTO LLENO";
 
-  } else if (
-    estadoPeaje.equals("ABRIENDO") ||
-    estadoPeaje.equals("CERRANDO")
-  ) {
+  } else if (estadoPeaje.equals("ABRIENDO")) {
 
-    if (estadoPeaje.equals("ABRIENDO")) {
-      mensaje = "ESPERE MIENTRAS LA CABINA SE ABRE";
-    } else {
-      mensaje = "ESPERE MIENTRAS LA CABINA SE CIERRA";
-    }
+    mensaje = "ESPERE MIENTRAS LA CABINA SE ABRE";
+
+  } else if (estadoPeaje.equals("CERRANDO")) {
+
+    mensaje = "ESPERE MIENTRAS LA CABINA SE CIERRA";
 
   } else if (estadoPeaje.equals("ABIERTO")) {
 
