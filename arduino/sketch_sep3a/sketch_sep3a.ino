@@ -13,22 +13,45 @@ const int ECHO_ESTACIONAMIENTO_2 = 5;
 
 // Distancias
 const float DISTANCIA_MINIMA_CM = 1.0;
-const float DISTANCIA_MAXIMA_CM = 5.0;
-const float DISTANCIA_OCUPADO_CM = 10.0;
+const float DISTANCIA_MAXIMA_CM = 20.0;
+const float DISTANCIA_OCUPADO_CM = 30.0;
 
+// Mediciones
 const float FACTOR_CONVERSION_CM = 58.0;
 const int CANTIDAD_MEDICIONES = 10;
 const int MAX_FALLOS_CONSECUTIVOS = 3;
-const unsigned long INTERVALO_MEDICION_MS = 60;
 
+// Tiempos
+const unsigned long TIEMPO_DETECCION_MS = 300;
+const unsigned long TIEMPO_DESPEJADO_MS = 300;
+
+const unsigned long INTERVALO_MEDICION_MS = 60;
 const unsigned long TIMEOUT_ECHO_US = 30000;
 const unsigned long INTERVALO_ENVIO_MS = 500;
 const unsigned long TIEMPO_MOVIMIENTO_MS = 1000;
 
+const int ANGULO_CERRADO = 0;
+const int ANGULO_ABIERTO = 90;
+
+const float VELOCIDAD_SERVO_GRADOS_MS =
+  (float)(ANGULO_ABIERTO - ANGULO_CERRADO) /
+  TIEMPO_MOVIMIENTO_MS;
+
+// Temporizadores
 unsigned long ultimoEnvio = 0;
 unsigned long inicioMovimiento = 0;
 unsigned long ultimaMedicion = 0;
+
+unsigned long inicioDeteccion = 0;
+unsigned long inicioDespejado = 0;
+
+// Movimiento del servo
+int anguloInicialMovimiento = ANGULO_CERRADO;
+unsigned long tiempoMovimientoActual = 0;
+
+// Mediciones
 int turnoMedicion = 0;
+
 float distanciaPeaje = -1;
 float distanciaEstacionamiento1 = -1;
 float distanciaEstacionamiento2 = -1;
@@ -41,22 +64,27 @@ struct PromedioMovil {
   float suma = 0;
 
   float actualizar(float distancia) {
-    // Tolera fallos aislados sin incluirlos en el promedio.
-    // Tras varios fallos, descarta los datos antiguos y cuenta como ocupado.
     if (distancia < 0) {
       if (fallosConsecutivos < MAX_FALLOS_CONSECUTIVOS) {
         fallosConsecutivos++;
       }
-      if (fallosConsecutivos < MAX_FALLOS_CONSECUTIVOS && cantidad > 0) {
+
+      if (
+        fallosConsecutivos < MAX_FALLOS_CONSECUTIVOS &&
+        cantidad > 0
+      ) {
         return suma / cantidad;
       }
+
       siguiente = 0;
       cantidad = 0;
       suma = 0;
+
       return -1;
     }
 
     fallosConsecutivos = 0;
+
     if (cantidad == CANTIDAD_MEDICIONES) {
       suma -= lecturas[siguiente];
     } else {
@@ -65,16 +93,15 @@ struct PromedioMovil {
 
     lecturas[siguiente] = distancia;
     suma += distancia;
+
     siguiente = (siguiente + 1) % CANTIDAD_MEDICIONES;
+
     return suma / cantidad;
   }
 };
 
 PromedioMovil promedioEstacionamiento1;
 PromedioMovil promedioEstacionamiento2;
-
-const int ANGULO_CERRADO = 0;
-const int ANGULO_ABIERTO = 90;
 
 enum EstadoPeaje {
   CERRADO,
@@ -87,8 +114,10 @@ EstadoPeaje estadoActual = CERRADO;
 
 Servo servo;
 
-float medirDistanciaUltrasonido(int triggerPin, int echoPin) {
-
+float medirDistanciaUltrasonido(
+  int triggerPin,
+  int echoPin
+) {
   digitalWrite(triggerPin, LOW);
   delayMicroseconds(2);
 
@@ -111,31 +140,46 @@ float medirDistanciaUltrasonido(int triggerPin, int echoPin) {
 }
 
 void actualizarMediciones() {
-
-  if (millis() - ultimaMedicion < INTERVALO_MEDICION_MS) {
+  if (
+    millis() - ultimaMedicion <
+    INTERVALO_MEDICION_MS
+  ) {
     return;
   }
 
-  // Alterna acceso, plaza 1, acceso, plaza 2 para priorizar la barrera.
-  // Una lectura por turno; las plazas filtran fallos aislados y el acceso no.
-  if (turnoMedicion == 0 || turnoMedicion == 2) {
-    distanciaPeaje = medirDistanciaUltrasonido(TRIGGER_PEAJE, ECHO_PEAJE);
+  if (
+    turnoMedicion == 0 ||
+    turnoMedicion == 2
+  ) {
+    distanciaPeaje =
+      medirDistanciaUltrasonido(
+        TRIGGER_PEAJE,
+        ECHO_PEAJE
+      );
   } else if (turnoMedicion == 1) {
-    distanciaEstacionamiento1 = promedioEstacionamiento1.actualizar(medirDistanciaUltrasonido(
-      TRIGGER_ESTACIONAMIENTO_1, ECHO_ESTACIONAMIENTO_1
-    ));
+    distanciaEstacionamiento1 =
+      promedioEstacionamiento1.actualizar(
+        medirDistanciaUltrasonido(
+          TRIGGER_ESTACIONAMIENTO_1,
+          ECHO_ESTACIONAMIENTO_1
+        )
+      );
   } else {
-    distanciaEstacionamiento2 = promedioEstacionamiento2.actualizar(medirDistanciaUltrasonido(
-      TRIGGER_ESTACIONAMIENTO_2, ECHO_ESTACIONAMIENTO_2
-    ));
+    distanciaEstacionamiento2 =
+      promedioEstacionamiento2.actualizar(
+        medirDistanciaUltrasonido(
+          TRIGGER_ESTACIONAMIENTO_2,
+          ECHO_ESTACIONAMIENTO_2
+        )
+      );
   }
 
   ultimaMedicion = millis();
-  turnoMedicion = (turnoMedicion + 1) % 4;
+  turnoMedicion =
+    (turnoMedicion + 1) % 4;
 }
 
 bool vehiculoDetectado(float distancia) {
-
   return (
     distancia >= DISTANCIA_MINIMA_CM &&
     distancia <= DISTANCIA_MAXIMA_CM
@@ -143,9 +187,6 @@ bool vehiculoDetectado(float distancia) {
 }
 
 bool estacionamientoOcupado(float distancia) {
-
-  // Fail-safe: una lectura invalida (sensor sin eco) se trata como ocupado,
-  // para no reportar ni asumir nunca una plaza "desconocida" como libre.
   return (
     distancia < 0 ||
     distancia < DISTANCIA_OCUPADO_CM
@@ -156,28 +197,191 @@ bool hayEstacionamientoLibre(
   float distancia1,
   float distancia2
 ) {
-
   return (
     !estacionamientoOcupado(distancia1) ||
     !estacionamientoOcupado(distancia2)
   );
 }
 
-void enviarEstado(
-  float distanciaEstacionamiento1,
-  float distanciaEstacionamiento2
-) {
+void iniciarMovimiento(int anguloObjetivo) {
+  anguloInicialMovimiento = servo.read();
 
+  int diferencia =
+    abs(
+      anguloObjetivo -
+      anguloInicialMovimiento
+    );
+
+  if (diferencia == 0) {
+    servo.write(anguloObjetivo);
+
+    if (anguloObjetivo == ANGULO_ABIERTO) {
+      estadoActual = ABIERTO;
+    } else {
+      estadoActual = CERRADO;
+    }
+
+    inicioDeteccion = 0;
+    inicioDespejado = 0;
+
+    return;
+  }
+
+  tiempoMovimientoActual =
+    (unsigned long)(
+      diferencia /
+      VELOCIDAD_SERVO_GRADOS_MS
+    );
+
+  inicioMovimiento = millis();
+
+  inicioDeteccion = 0;
+  inicioDespejado = 0;
+
+  if (anguloObjetivo == ANGULO_ABIERTO) {
+    estadoActual = ABRIENDO;
+  } else {
+    estadoActual = CERRANDO;
+  }
+}
+
+void actualizarMovimientoServo() {
+  if (
+    estadoActual != ABRIENDO &&
+    estadoActual != CERRANDO
+  ) {
+    return;
+  }
+
+  unsigned long tiempoTranscurrido =
+    millis() - inicioMovimiento;
+
+  int anguloObjetivo =
+    estadoActual == ABRIENDO
+      ? ANGULO_ABIERTO
+      : ANGULO_CERRADO;
+
+  if (
+    tiempoTranscurrido >=
+    tiempoMovimientoActual
+  ) {
+    servo.write(anguloObjetivo);
+    return;
+  }
+
+  int angulo = map(
+    tiempoTranscurrido,
+    0,
+    tiempoMovimientoActual,
+    anguloInicialMovimiento,
+    anguloObjetivo
+  );
+
+  servo.write(angulo);
+}
+
+void actualizarEstadoPeaje() {
+  switch (estadoActual) {
+
+    case CERRADO:
+      if (vehiculoDetectado(distanciaPeaje)) {
+
+        if (inicioDeteccion == 0) {
+          inicioDeteccion = millis();
+        }
+
+        if (
+          millis() - inicioDeteccion >=
+          TIEMPO_DETECCION_MS
+        ) {
+          if (
+            hayEstacionamientoLibre(
+              distanciaEstacionamiento1,
+              distanciaEstacionamiento2
+            )
+          ) {
+            inicioDeteccion = 0;
+            iniciarMovimiento(ANGULO_ABIERTO);
+          } else {
+            inicioDeteccion = 0;
+          }
+        }
+
+      } else {
+        inicioDeteccion = 0;
+      }
+      break;
+
+    case ABRIENDO:
+      if (
+        millis() - inicioMovimiento >=
+        tiempoMovimientoActual
+      ) {
+        servo.write(ANGULO_ABIERTO);
+        estadoActual = ABIERTO;
+
+        inicioDeteccion = 0;
+        inicioDespejado = 0;
+      }
+      break;
+
+    case ABIERTO:
+      if (distanciaPeaje > DISTANCIA_MAXIMA_CM) {
+
+        if (inicioDespejado == 0) {
+          inicioDespejado = millis();
+        }
+
+        if (
+          millis() - inicioDespejado >=
+          TIEMPO_DESPEJADO_MS
+        ) {
+          inicioDespejado = 0;
+          iniciarMovimiento(ANGULO_CERRADO);
+        }
+
+      } else {
+        inicioDespejado = 0;
+      }
+      break;
+
+    case CERRANDO:
+      if (
+        millis() - inicioMovimiento >=
+        tiempoMovimientoActual
+      ) {
+        servo.write(ANGULO_CERRADO);
+        estadoActual = CERRADO;
+
+        inicioDeteccion = 0;
+        inicioDespejado = 0;
+      }
+      break;
+  }
+}
+
+void enviarEstado() {
   Serial.print("EST1:");
-  Serial.print(estacionamientoOcupado(distanciaEstacionamiento1) ? "OCUPADO" : "LIBRE");
+  Serial.print(
+    estacionamientoOcupado(
+      distanciaEstacionamiento1
+    )
+      ? "OCUPADO"
+      : "LIBRE"
+  );
 
   Serial.print(";EST2:");
-  Serial.print(estacionamientoOcupado(distanciaEstacionamiento2) ? "OCUPADO" : "LIBRE");
+  Serial.print(
+    estacionamientoOcupado(
+      distanciaEstacionamiento2
+    )
+      ? "OCUPADO"
+      : "LIBRE"
+  );
 
   Serial.print(";PEAJE:");
 
   switch (estadoActual) {
-
     case CERRADO:
       Serial.println("CERRADO");
       break;
@@ -196,97 +400,56 @@ void enviarEstado(
   }
 }
 
-void setup() {
+void actualizarComunicacion() {
+  if (
+    millis() - ultimoEnvio >=
+    INTERVALO_ENVIO_MS
+  ) {
+    enviarEstado();
+    ultimoEnvio = millis();
+  }
+}
 
+void setup() {
   Serial.begin(9600);
 
   pinMode(TRIGGER_PEAJE, OUTPUT);
   pinMode(ECHO_PEAJE, INPUT);
   digitalWrite(TRIGGER_PEAJE, LOW);
 
-  pinMode(TRIGGER_ESTACIONAMIENTO_1, OUTPUT);
-  pinMode(ECHO_ESTACIONAMIENTO_1, INPUT);
-  digitalWrite(TRIGGER_ESTACIONAMIENTO_1, LOW);
+  pinMode(
+    TRIGGER_ESTACIONAMIENTO_1,
+    OUTPUT
+  );
+  pinMode(
+    ECHO_ESTACIONAMIENTO_1,
+    INPUT
+  );
+  digitalWrite(
+    TRIGGER_ESTACIONAMIENTO_1,
+    LOW
+  );
 
-  pinMode(TRIGGER_ESTACIONAMIENTO_2, OUTPUT);
-  pinMode(ECHO_ESTACIONAMIENTO_2, INPUT);
-  digitalWrite(TRIGGER_ESTACIONAMIENTO_2, LOW);
+  pinMode(
+    TRIGGER_ESTACIONAMIENTO_2,
+    OUTPUT
+  );
+  pinMode(
+    ECHO_ESTACIONAMIENTO_2,
+    INPUT
+  );
+  digitalWrite(
+    TRIGGER_ESTACIONAMIENTO_2,
+    LOW
+  );
 
   servo.attach(SERVO_PIN);
   servo.write(ANGULO_CERRADO);
 }
 
 void loop() {
-
+  actualizarMovimientoServo();
   actualizarMediciones();
-
-  switch (estadoActual) {
-
-    case CERRADO:
-
-      if (
-        vehiculoDetectado(distanciaPeaje) &&
-        hayEstacionamientoLibre(
-          distanciaEstacionamiento1,
-          distanciaEstacionamiento2
-        )
-      ) {
-
-        servo.write(ANGULO_ABIERTO);
-
-        inicioMovimiento = millis();
-        estadoActual = ABRIENDO;
-      }
-
-      break;
-
-    case ABRIENDO:
-
-      if (millis() - inicioMovimiento >= TIEMPO_MOVIMIENTO_MS) {
-        estadoActual = ABIERTO;
-      }
-
-      break;
-
-    case ABIERTO:
-
-      // Una lectura fallida o demasiado cercana no confirma una zona despejada.
-      if (distanciaPeaje > DISTANCIA_MAXIMA_CM) {
-
-        servo.write(ANGULO_CERRADO);
-
-        inicioMovimiento = millis();
-        estadoActual = CERRANDO;
-      }
-
-      break;
-
-    case CERRANDO:
-
-      // Reabre tambien si falla el sensor o si la lectura es demasiado cercana.
-      if (distanciaPeaje <= DISTANCIA_MAXIMA_CM) {
-
-        servo.write(ANGULO_ABIERTO);
-
-        inicioMovimiento = millis();
-        estadoActual = ABRIENDO;
-
-      } else if (millis() - inicioMovimiento >= TIEMPO_MOVIMIENTO_MS) {
-
-        estadoActual = CERRADO;
-      }
-
-      break;
-  }
-
-  if (millis() - ultimoEnvio >= INTERVALO_ENVIO_MS) {
-
-    enviarEstado(
-      distanciaEstacionamiento1,
-      distanciaEstacionamiento2
-    );
-
-    ultimoEnvio = millis();
-  }
-
+  actualizarEstadoPeaje();
+  actualizarComunicacion();
 }

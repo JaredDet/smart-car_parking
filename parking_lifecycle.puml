@@ -3,26 +3,30 @@ title Sistema de Estacionamiento - Máquina de Estados
 
 [*] --> CERRADO
 
-CERRADO --> ABRIENDO : Vehículo detectado\n+ espacio libre
+CERRADO --> ABRIENDO : Vehículo detectado durante 300 ms\n+ espacio libre
 ABRIENDO --> ABIERTO : Tiempo de movimiento cumplido
-ABIERTO --> CERRANDO : Vehículo abandona zona
-CERRANDO --> ABRIENDO : Vehículo detectado
-CERRANDO --> CERRADO : Tiempo cumplido\n+ sin vehículo
+ABIERTO --> CERRANDO : Zona despejada durante 300 ms
+CERRANDO --> CERRADO : Tiempo de movimiento cumplido
 
 note right of CERRADO
 Barrera cerrada.
-Requiere vehículo y espacio libre
+Requiere vehículo detectado
+durante 300 ms y espacio libre
 para iniciar la apertura.
 end note
 
 note right of ABIERTO
 Barrera abierta mientras
-haya un vehículo en la zona.
+el vehículo permanezca
+en la zona.
+El cierre requiere que la zona
+esté despejada durante 300 ms.
 end note
 
 note right of CERRANDO
-Si se detecta un vehículo,
-la barrera vuelve a abrirse.
+El cierre no puede interrumpirse.
+Una vez iniciado, la barrera
+continúa hasta quedar cerrada.
 end note
 
 @enduml
