@@ -13,10 +13,12 @@ const int ECHO_ESTACIONAMIENTO_2 = 5;
 
 // Distancias
 const float DISTANCIA_MINIMA_CM = 1.0;
-const float DISTANCIA_MAXIMA_CM = 20.0;
+const float DISTANCIA_MAXIMA_CM = 5.0;
 const float DISTANCIA_OCUPADO_CM = 10.0;
 
 const float FACTOR_CONVERSION_CM = 58.0;
+const int CANTIDAD_MEDICIONES = 10;
+const int MAX_FALLOS_CONSECUTIVOS = 3;
 const unsigned long INTERVALO_MEDICION_MS = 60;
 
 const unsigned long TIMEOUT_ECHO_US = 30000;
@@ -30,6 +32,46 @@ int turnoMedicion = 0;
 float distanciaPeaje = -1;
 float distanciaEstacionamiento1 = -1;
 float distanciaEstacionamiento2 = -1;
+
+struct PromedioMovil {
+  float lecturas[CANTIDAD_MEDICIONES] = {};
+  int siguiente = 0;
+  int cantidad = 0;
+  int fallosConsecutivos = 0;
+  float suma = 0;
+
+  float actualizar(float distancia) {
+    // Tolera fallos aislados sin incluirlos en el promedio.
+    // Tras varios fallos, descarta los datos antiguos y cuenta como ocupado.
+    if (distancia < 0) {
+      if (fallosConsecutivos < MAX_FALLOS_CONSECUTIVOS) {
+        fallosConsecutivos++;
+      }
+      if (fallosConsecutivos < MAX_FALLOS_CONSECUTIVOS && cantidad > 0) {
+        return suma / cantidad;
+      }
+      siguiente = 0;
+      cantidad = 0;
+      suma = 0;
+      return -1;
+    }
+
+    fallosConsecutivos = 0;
+    if (cantidad == CANTIDAD_MEDICIONES) {
+      suma -= lecturas[siguiente];
+    } else {
+      cantidad++;
+    }
+
+    lecturas[siguiente] = distancia;
+    suma += distancia;
+    siguiente = (siguiente + 1) % CANTIDAD_MEDICIONES;
+    return suma / cantidad;
+  }
+};
+
+PromedioMovil promedioEstacionamiento1;
+PromedioMovil promedioEstacionamiento2;
 
 const int ANGULO_CERRADO = 0;
 const int ANGULO_ABIERTO = 90;
@@ -75,17 +117,17 @@ void actualizarMediciones() {
   }
 
   // Alterna acceso, plaza 1, acceso, plaza 2 para priorizar la barrera.
-  // Solo una lectura bloqueante por turno; un fallo invalida el dato anterior.
+  // Una lectura por turno; las plazas filtran fallos aislados y el acceso no.
   if (turnoMedicion == 0 || turnoMedicion == 2) {
     distanciaPeaje = medirDistanciaUltrasonido(TRIGGER_PEAJE, ECHO_PEAJE);
   } else if (turnoMedicion == 1) {
-    distanciaEstacionamiento1 = medirDistanciaUltrasonido(
+    distanciaEstacionamiento1 = promedioEstacionamiento1.actualizar(medirDistanciaUltrasonido(
       TRIGGER_ESTACIONAMIENTO_1, ECHO_ESTACIONAMIENTO_1
-    );
+    ));
   } else {
-    distanciaEstacionamiento2 = medirDistanciaUltrasonido(
+    distanciaEstacionamiento2 = promedioEstacionamiento2.actualizar(medirDistanciaUltrasonido(
       TRIGGER_ESTACIONAMIENTO_2, ECHO_ESTACIONAMIENTO_2
-    );
+    ));
   }
 
   ultimaMedicion = millis();
@@ -102,8 +144,10 @@ bool vehiculoDetectado(float distancia) {
 
 bool estacionamientoOcupado(float distancia) {
 
+  // Fail-safe: una lectura invalida (sensor sin eco) se trata como ocupado,
+  // para no reportar ni asumir nunca una plaza "desconocida" como libre.
   return (
-    distancia >= 0 &&
+    distancia < 0 ||
     distancia < DISTANCIA_OCUPADO_CM
   );
 }
@@ -114,8 +158,8 @@ bool hayEstacionamientoLibre(
 ) {
 
   return (
-    distancia1 >= DISTANCIA_OCUPADO_CM ||
-    distancia2 >= DISTANCIA_OCUPADO_CM
+    !estacionamientoOcupado(distancia1) ||
+    !estacionamientoOcupado(distancia2)
   );
 }
 
@@ -125,24 +169,10 @@ void enviarEstado(
 ) {
 
   Serial.print("EST1:");
-
-  if (distanciaEstacionamiento1 < 0) {
-    Serial.print("DESCONOCIDO");
-  } else if (estacionamientoOcupado(distanciaEstacionamiento1)) {
-    Serial.print("OCUPADO");
-  } else {
-    Serial.print("LIBRE");
-  }
+  Serial.print(estacionamientoOcupado(distanciaEstacionamiento1) ? "OCUPADO" : "LIBRE");
 
   Serial.print(";EST2:");
-
-  if (distanciaEstacionamiento2 < 0) {
-    Serial.print("DESCONOCIDO");
-  } else if (estacionamientoOcupado(distanciaEstacionamiento2)) {
-    Serial.print("OCUPADO");
-  } else {
-    Serial.print("LIBRE");
-  }
+  Serial.print(estacionamientoOcupado(distanciaEstacionamiento2) ? "OCUPADO" : "LIBRE");
 
   Serial.print(";PEAJE:");
 
@@ -233,7 +263,7 @@ void loop() {
 
     case CERRANDO:
 
-      // Reabre también si falla el sensor o si la lectura es demasiado cercana.
+      // Reabre tambien si falla el sensor o si la lectura es demasiado cercana.
       if (distanciaPeaje <= DISTANCIA_MAXIMA_CM) {
 
         servo.write(ANGULO_ABIERTO);

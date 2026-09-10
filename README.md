@@ -25,15 +25,23 @@ Arduino procesa las mediciones y controla la barrera, mientras que Processing re
 * Envía los estados hacia Processing mediante comunicación serial.
 * Muestra los estados de los estacionamientos y la barrera en una interfaz gráfica.
 
-Si un sensor de plaza no devuelve eco, su estado se informa como `DESCONOCIDO`
+Si un sensor de plaza acumula tres lecturas consecutivas sin eco, su estado se informa como `OCUPADO`
 y esa plaza no habilita la apertura. La barrera solo comienza a cerrar con una
-lectura válida por encima de 20 cm; si el sensor de acceso falla durante el
+lectura válida por encima de 5 cm; si el sensor de acceso falla durante el
 cierre, vuelve a abrirse. La ausencia de eco no se considera una zona despejada.
 
 Las mediciones se alternan en el orden acceso, plaza 1, acceso, plaza 2, con
 60 ms de espera sin bloqueo entre lecturas. Cada lectura puede bloquear hasta
-30 ms. Se eliminó el promedio de diez lecturas consecutivas; conviene comprobar
-la estabilidad de las lecturas y los umbrales con el montaje físico.
+30 ms. Cada plaza mantiene un promedio móvil de las últimas diez lecturas,
+actualizado con una sola medición por turno. Al iniciar se promedian las lecturas
+disponibles. Uno o dos fallos consecutivos conservan el promedio sin añadir
+la lectura inválida; el tercero reinicia el promedio y se trata como ocupado.
+Una lectura válida reinicia el contador de fallos. Sin lecturas válidas previas,
+la plaza se trata como ocupada; tras invalidar el promedio, la siguiente lectura
+válida inicia uno nuevo.
+El sensor de acceso utiliza la lectura directa para reaccionar sin esperar al
+promedio. El filtrado suaviza las distancias de las plazas, pero retrasa los
+cambios de ocupación; conviene comprobar los umbrales con el montaje físico.
 
 ## Comunicación
 
